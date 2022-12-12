@@ -42,7 +42,7 @@ import ghidra.util.task.TaskMonitor;
 
 public class c64BinLoaderLoader extends AbstractProgramWrapperLoader {
 	// https://github.com/NationalSecurityAgency/ghidra/blob/a64afa37a7873fefad84c7b994a50acf02beb062/Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/AbstractProgramLoader.java
-	public static final String VERSION = "v0.1.2";
+	public static final String VERSION = "v0.1.3";
 	
 	public static final String OPTION_LOAD_FIRST_TWO_BYTES = "Load first two bytes?";
 	public static final String OPTION_LOAD_ADDRESS = "Load address";
@@ -149,12 +149,12 @@ public class c64BinLoaderLoader extends AbstractProgramWrapperLoader {
 
 		// Mapped I/O			
 		try {
-			api.createLabel(api.toAddr(0x0000), "6510DDR", true);
-			api.createLabel(api.toAddr(0x0001), "BANKS_TAPE", true);	
+			api.createLabel(api.toAddr(0x0000), "D6510", true);
+			api.createLabel(api.toAddr(0x0001), "R6510", true);	
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-
+		
 	}
 
 	// full permissions on block
@@ -172,6 +172,11 @@ public class c64BinLoaderLoader extends AbstractProgramWrapperLoader {
 		return;
 	}
 
+	@Override
+	public boolean supportsLoadIntoProgram() {
+		return true;
+	}	
+	
 	@Override
 	public LoaderTier getTier() {
 		return LoaderTier.UNTARGETED_LOADER;

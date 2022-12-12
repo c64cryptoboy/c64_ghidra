@@ -30,8 +30,8 @@ def run():
     # in the GUI, or the API equivalent:
     clearListing(currentSelection)
    
-    addr_itter = currentSelection.getAddresses(True) # True == iterate accending
-    for addr in addr_itter:
+    addr_iter = currentSelection.getAddresses(True) # True == iterate accending
+    for addr in addr_iter:
         setByte(addr, getByte(addr) ^ xor_byte)
 
 run()
