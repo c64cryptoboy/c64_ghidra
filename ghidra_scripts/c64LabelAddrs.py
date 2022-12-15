@@ -3,17 +3,6 @@ from ghidra.program.model.symbol.SourceType import USER_DEFINED, IMPORTED
 
 ADDRESS   = 0x00002000  # Bit set if the operand is used as an address (otherwise assume scalar).
 
-# options enum
-ADDR_LABEL   = 0
-ADDR_COMMENT = 1
-ROMKERNAL    = 100
-RAMKERNAL    = 101
-ROMBASIC     = 102
-RAMBASIC     = 103
-IOREGS       = 104
-ROMANDIO1541 = 105
-RAM1541      = 106
-
 # from http://unusedino.de/ec64/technical/project64/memory_maps.html
 romkernal_labels = {
     57344 : ("", "e000:EXP continued From BASIC ROM"),
@@ -1262,81 +1251,125 @@ ram1541_labels = {
     1792 : ("", "0700:Buffer 4")
 }
 
-range_lookups = {
-    ROMKERNAL: romkernal_labels, RAMKERNAL: ramkernal_labels, ROMBASIC: rombasic_labels, RAMBASIC: rambasic_labels,
-    IOREGS: ioregs_labels, ROMANDIO1541: romio1541_labels, RAM1541: ram1541_labels
-}
-
-
 def run():
     memory = currentProgram.getMemory()
-    symbol_table = currentProgram.getSymbolTable()
     
     # make sure something's selected
     if currentSelection is None or currentSelection.isEmpty():
         print("Error: Must select section to label")
         return
 
-    choices = askChoices(
-        "Labeling on addresses", "Select one or more ranges (recommend not mixing 1541 with others) and one or both actions", 
-        [ROMKERNAL, RAMKERNAL, ROMBASIC, RAMBASIC, IOREGS, ROMANDIO1541, RAM1541, ADDR_LABEL, ADDR_COMMENT],
-        ["Range: KERNAL ROM calls", "Range: KERNAL RAM usage", "Range: BASIC ROM calls", "Range: BASIC RAM usage",
-         "Range: IO registers", "Range: 1541 IO and ROM calls", "Range: 1541 RAM usage", "Action: Address labels", "Action: Address comments"]
-    )
+    # select device 
+    choice1_C64 = "C64 ROM/RAM/IOregs"
+    choice1_1541 = "1541 ROM/RAM/IOregs"
+    choice1 = askChoice("Device", "Select one", [choice1_C64, choice1_1541], choice1_C64)
 
-    apply_labels = ADDR_LABEL in choices
-    apply_commments = ADDR_COMMENT in choices     
-    if not apply_labels and not apply_commments:   
-        print "No action selected"
+    # select memory ranges
+    [ROMKERNAL, RAMKERNAL, ROMBASIC, RAMBASIC, IOREGS, ROMANDIO1541, RAM1541] = [0,1,2,3,4,5,6]
+    if choice1 == choice1_C64:
+        choices2 = askChoices(
+            "Ranges", "Select one or more ranges", [ROMKERNAL, RAMKERNAL, ROMBASIC, RAMBASIC, IOREGS],
+            ["KERNAL ROM calls", "KERNAL RAM usage", "BASIC ROM calls", "BASIC RAM usage", "IO registers"]    
+        )
+    else:
+        choices2 = askChoices(
+            "Ranges", "Select one or more ranges", [ROMANDIO1541, RAM1541],
+            ["Range: 1541 IO and ROM calls", "Range: 1541 RAM usage"]    
+        )
+
+    if len(choices2) == 0:
+        print("No range(s) selected")
         return
 
-    if apply_labels:
-        choices.remove(ADDR_LABEL)
-    if apply_commments:
-        choices.remove(ADDR_COMMENT)
+    # select labels or comments
+    choice3_addr_label = "address primary labels"
+    choice3_eol_comment = "EOL descriptive comments"
+    choice3 = askChoice("Create...", "Select one", [choice3_addr_label, choice3_eol_comment], choice3_addr_label)
+    create_label = (choice3 == choice3_addr_label)
+    create_comment = not create_label
+
+    # select instructions' addresses or addresses in operands
+    choice4_operand_addr = "addresses in operands"
+    choice4_addr = "addresses"
+    if choice3 == choice3_addr_label:
+        choices4 = askChoices("Set primary labels for selected...", "Select one or more",
+            [choice4_operand_addr, choice4_addr])
+        for_instruction_addr = choice4_addr in choices4
+        for_operand_addr = choice4_addr in choices4
+    else:
+        choice4 = askChoice("Set EOL comments for selected...", "Select one",
+            [choice4_operand_addr, choice4_addr], choice4_operand_addr)
+        for_instruction_addr = (choice4 == choice4_addr)
+        for_operand_addr = not for_instruction_addr
+
+    # select replace or not
+    replace = askYesNo("Replace", "Replace existing labels and/or comments?")
+
+    range_lookups = {
+        ROMKERNAL: romkernal_labels, RAMKERNAL: ramkernal_labels, ROMBASIC: rombasic_labels, RAMBASIC: rambasic_labels,
+        IOREGS: ioregs_labels, ROMANDIO1541: romio1541_labels, RAM1541: ram1541_labels
+    }
     lookups = {}
-    for choice in choices:
-        lookups.update(range_lookups[choice]) # merge all the selected ranges
+    for range in choices2:
+        lookups.update(range_lookups[range]) # merge all the selected ranges
 
     # https://ghidra.re/ghidra_docs/api/ghidra/program/model/listing/InstructionStub.html
     addr_iter = currentSelection.getAddresses(True) # True == iterate accending
-    for addr in addr_iter:
+    for addr in addr_iter: # iterate over user selection
         inst = getInstructionAt(addr)
         
-        if inst is None:
-            continue
+        addr_lookup = None
+        if for_instruction_addr:
+            if addr.getOffset() in lookups:
+                addr_lookup = lookups[addr.getOffset()]
 
-        # toss single-byte instructions
-        num_operands = inst.getNumOperands()
-        if num_operands == 0:
-            continue
+        operand_addr_lookup = operand_addr = None
+        if for_operand_addr:
+            if inst is not None and inst.num_operands > 0 and inst.getOperandType(0) & ADDRESS > 0:
+                # get the one or two-byte address in the operand (little endian)
+                inst_bytes = inst.getBytes()
+                operand_addr = inst_bytes[1] & 0xff
+                if len(inst_bytes) == 3:
+                    operand_addr += (inst_bytes[2] & 0xff) * 256
+                operand_addr = toAddr(operand_addr)
+                if operand_addr.getOffset() in lookups:
+                    operand_addr_lookup = lookups[operand_addr.getOffset()]
+            
+        if create_label:
+            if addr_lookup is not None:
+                setPrimaryLabelOnAddr(addr, addr_lookup[0], replace)
+            if operand_addr_lookup is not None:        
+                setPrimaryLabelOnAddr(operand_addr, operand_addr_lookup[0], replace)
 
-        # instructions must reference a memory address
-        operandType = inst.getOperandType(0)
-        if operandType & ADDRESS == 0:
-            continue
+        if create_comment:
+            if addr_lookup is not None:
+                setEOLCommentOnAddr(addr, "%s" % (addr_lookup[1]))         
+            if operand_addr_lookup is not None:         
+                setEOLComment(operand_addr, "%s" % (operand_addr_lookup[1]))
 
-        # get the one or two-byte address in the operand (little endian)
-        inst_bytes = inst.getBytes()
-        operand_addr = inst_bytes[1] & 0xff
-        if len(inst_bytes) == 3:
-            operand_addr += (inst_bytes[2] & 0xff) * 256
 
-        if operand_addr in lookups:
-            lookup = lookups[operand_addr]
+def setPrimaryLabelOnAddr(addr, label, replace = False):
+    if label.strip() == "":
+        return
+        
+    symbol_table = currentProgram.getSymbolTable()
+    symbol = symbol_table.getPrimarySymbol(addr)
+    
+    if not replace and symbol is not None:
+        return
 
-            if apply_labels:           
-                symbol = symbol_table.getPrimarySymbol(addr)
-                if symbol is None:
-                    namespace = currentProgram.getGlobalNamespace()
-                    new_symbol = symbol_table.createLabel(toAddr(operand_addr), lookup[0], namespace, USER_DEFINED)
-                    new_symbol.setPrimary()
-                    new_symbol.setPinned(True)
+    new_symbol = symbol_table.createLabel(addr, label, currentProgram.getGlobalNamespace(), USER_DEFINED)
+    new_symbol.setPrimary()
+    #new_symbol.setPinned(True)
 
-            if apply_commments:
-                setEOLComment(addr, "%s" % (lookup[1]))
 
-        # setEOLComment(addr, "%d %d %d %d" % (addr.getOffset(), len(inst.getBytes()), num_operands, operandType))
+def setEOLCommentOnAddr(addr, comment, replace = False):
+    if comment.strip() == "":
+        return
+    if not replace and getEOLComment(addr) is not None:
+        return
+
+    setEOLComment(addr, comment)
 
 
 run()
