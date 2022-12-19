@@ -1,9 +1,44 @@
+# Script to give labels to known C64 memory locations and memory mapped I/O, and to comment code
+# containing references to these addresses.  Designed to work with bad references, so no need to
+# actually load in the referenced ROMs as if they were libraries.
+#
+# github c64cryptoboy/c64_ghidra, Dec '22
+#
+# Found these references useful when writing this script:
+# - http://unusedino.de/ec64/technical/project64/memory_maps.html
+# - https://archive.org/details/Compute_s_Mapping_the_Commodore_64
+# - https://ist.uwaterloo.ca/~schepers/MJK/ascii/1541map.txt
+
 from ghidra.program.model.address import AddressSet
 from ghidra.program.model.symbol.SourceType import USER_DEFINED, IMPORTED
 
+# operand type bits; python conversion from
+#    https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Framework/SoftwareModeling
+#       /src/main/java/ghidra/program/model/lang/OperandType.java
+READ      = 0x00000001  # Bit set if operand refers to an address being read.
+WRITE     = 0x00000002  # Bit set if operand refers to an address being written to.
+INDIRECT  = 0x00000004  # Bit set if operand is an indirect reference.
+IMMEDIATE = 0x00000008  # Bit set if operand is an immediate value.
+RELATIVE  = 0x00000010  # Bit set if operand depends on the instruction's address.
+IMPLICIT  = 0x00000020  # Bit set if operand is implicit.
+CODE      = 0x00000040  # Bit set it the address referred to contains code.
+DATA      = 0x00000080  # Bit set if the address referred to contains data.
+PORT      = 0x00000100  # Bit set if the operand is a port.
+REGISTER  = 0x00000200  # Bit set if the operand is a register.
+LIST      = 0x00000400  # Bit set if the operand is a list.
+FLAG      = 0x00000800  # Bit set if the operand is a flag.
+TEXT      = 0x00001000  # Bit set if the operand is text.
 ADDRESS   = 0x00002000  # Bit set if the operand is used as an address (otherwise assume scalar).
+SCALAR    = 0x00004000  # Bit set if the operand is a scalar value
+BIT       = 0x00008000  # Bit set if the operand is a bit value
+BYTE      = 0x00010000  # Bit set if the operand is a byte value
+WORD      = 0x00020000  # Bit set if the operand is a 2-byte value
+QUADWORD  = 0x00040000  # Bit set if the operand is an 8-byte value
+SIGNED    = 0x00080000  # Bit set if the operand is a signed value
+FLOAT     = 0x00100000  # Bit set if the operand is a float value
+COP       = 0x00200000  # Bit set if the operand is a co-processor value
+DYNAMIC   = 0x00400000  # Bit set if the operand is dynamically defined given some processorContext.  If bit is set then the SCALAR or ADDRESS bit must be set.
 
-# from http://unusedino.de/ec64/technical/project64/memory_maps.html
 romkernal_labels = {
     57344 : ("", "e000:EXP continued From BASIC ROM"),
     57411 : ("polyx", "e043:Series Evaluation"),
@@ -251,7 +286,6 @@ romkernal_labels = {
     65523 : ("iobase", "fff3:Return I/O Base Address")
 }
 
-# from http://unusedino.de/ec64/technical/project64/memory_maps.html
 ramkernal_labels = {
     144 : ("STATUS", "0090:Kernal I/O Status Word  ST"),
     145 : ("STKEY", "0091:Flag: $7F = STOP key"),
@@ -381,8 +415,6 @@ ramkernal_labels = {
     1024 : ("VICSCN", "0400:start of Default Screen Video Matrix")
 }
 
-# From http://unusedino.de/ec64/technical/project64/memory_maps.html
-# and https://archive.org/details/Compute_s_Mapping_the_Commodore_64
 rombasic_labels = {
     40960 : ("", "a000:Cold Start Vector"),
     40962 : ("", "a002:Warm Start Vector"),
@@ -556,7 +588,6 @@ rombasic_labels = {
     49133 : ("exp", "bfed:Perform [exp] (continued in KERNAL)")
 }
 
-# from http://unusedino.de/ec64/technical/project64/memory_maps.html
 rambasic_labels = {
     3 : ("ADRAY1", "0003:Jump Vector: Convert FAC to Integer in (A/Y) ($B1AA)"),
     5 : ("ADRAY2", "0005:Jump Vector: Convert int in (A/Y) to float in (FAC) ($B391)"),
@@ -638,8 +669,6 @@ rambasic_labels = {
     785 : ("USRADD", "0311:USR Address ($LB,$MB)")
 }
 
-# from http://unusedino.de/ec64/technical/project64/memory_maps.html
-# and https://archive.org/details/Compute_s_Mapping_the_Commodore_64
 ioregs_labels = {
     53249 : ("SPOY", "D001:Sprite 0 Y Pos"),
     53250 : ("SP1X", "D002:Sprite 1 X Pos"),
@@ -751,7 +780,6 @@ ioregs_labels = {
     56591 : ("CI2CRB", "DD0F:cia2: CIA Control Register B")
 }
 
-# from https://ist.uwaterloo.ca/~schepers/MJK/ascii/1541map.txt
 romio1541_labels = {
     6144 : ("", "1800:VIA1: PB, port B"),
     6145 : ("", "1801:VIA1: PA, port A"),
@@ -1049,7 +1077,6 @@ romio1541_labels = {
     65512 : ("", "ffe8:Turn motor off [F98F]")
 }
 
-# from https://ist.uwaterloo.ca/~schepers/MJK/ascii/1541map.txt
 ram1541_labels = {
     0 : ("", "0000:Command code for buffer 0"),
     1 : ("", "0001:Command code for buffer 1"),
@@ -1295,7 +1322,7 @@ def run():
         choices4 = askChoices("Set primary labels for selected...", "Select one or more",
             [choice4_operand_addr, choice4_addr])
         for_instruction_addr = choice4_addr in choices4
-        for_operand_addr = choice4_addr in choices4
+        for_operand_addr = choice4_operand_addr in choices4
     else:
         choice4 = askChoice("Set EOL comments for selected...", "Select one",
             [choice4_operand_addr, choice4_addr], choice4_operand_addr)
@@ -1325,7 +1352,7 @@ def run():
 
         operand_addr_lookup = operand_addr = None
         if for_operand_addr:
-            if inst is not None and inst.num_operands > 0 and inst.getOperandType(0) & ADDRESS > 0:
+            if inst is not None and inst.getNumOperands() > 0 and (inst.getOperandType(0) & ADDRESS) > 0:
                 # get the one or two-byte address in the operand (little endian)
                 inst_bytes = inst.getBytes()
                 operand_addr = inst_bytes[1] & 0xff
@@ -1338,14 +1365,14 @@ def run():
         if create_label:
             if addr_lookup is not None:
                 setPrimaryLabelOnAddr(addr, addr_lookup[0], replace)
-            if operand_addr_lookup is not None:        
+            if operand_addr_lookup is not None:
                 setPrimaryLabelOnAddr(operand_addr, operand_addr_lookup[0], replace)
 
         if create_comment:
             if addr_lookup is not None:
                 setEOLCommentOnAddr(addr, "%s" % (addr_lookup[1]))         
-            if operand_addr_lookup is not None:         
-                setEOLComment(operand_addr, "%s" % (operand_addr_lookup[1]))
+            if operand_addr_lookup is not None:    
+                setEOLComment(addr, "%s" % (operand_addr_lookup[1]))
 
 
 def setPrimaryLabelOnAddr(addr, label, replace = False):
@@ -1374,30 +1401,5 @@ def setEOLCommentOnAddr(addr, comment, replace = False):
 
 run()
 
-'''
-    # See https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Framework/SoftwareModeling/src/main/java/ghidra/program/model/lang/OperandType.java
-  
-	READ      = 0x00000001  # Bit set if operand refers to an address being read
-	WRITE     = 0x00000002  # Bit set if operand refers to an address being written to
-	INDIRECT  = 0x00000004  # Bit set if operand is an indirect reference
-    IMMEDIATE = 0x00000008  # Bit set if operand is an immediate value.
-    RELATIVE  = 0x00000010  # Bit set if operand depends on the instruction's address.
-    IMPLICIT  = 0x00000020  # Bit set if operand is implicit.
-    CODE      = 0x00000040  # Bit set it the address referred to contains code.
-    DATA      = 0x00000080  # Bit set if the address referred to contains data.
-    PORT      = 0x00000100  # Bit set if the operand is a port.
-    REGISTER  = 0x00000200  # Bit set if the operand is a register.
-    LIST      = 0x00000400  # Bit set if the operand is a list.
-    FLAG      = 0x00000800  # Bit set if the operand is a flag.
-    TEXT      = 0x00001000  # Bit set if the operand is text.
-    ADDRESS   = 0x00002000  # Bit set if the operand is used as an address (otherwise assume scalar).
-    SCALAR    = 0x00004000  # Bit set if the operand is a scalar value
-    BIT       = 0x00008000  # Bit set if the operand is a bit value
-    BYTE      = 0x00010000  # Bit set if the operand is a byte value
-    WORD      = 0x00020000  # Bit set if the operand is a 2-byte value
-    QUADWORD  = 0x00040000  # Bit set if the operand is an 8-byte value
-    SIGNED    = 0x00080000  # Bit set if the operand is a signed value
-    FLOAT     = 0x00100000  # Bit set if the operand is a float value
-    COP       = 0x00200000  # Bit set if the operand is a co-processor value
-    DYNAMIC   = 0x00400000  # Bit set if the operand is dynamically defined given some processorContext.  If bit is set then the SCALAR or ADDRESS bit must be set.
-'''
+
+

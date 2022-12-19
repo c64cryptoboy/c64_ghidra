@@ -1,3 +1,8 @@
+# Script to apply a constant EOR (XOR) mask to a highlight range
+#
+# github c64cryptoboy/c64_ghidra, Dec '22
+#
+
 from ghidra.program.model.address import AddressSet
 
 def run():
@@ -5,7 +10,7 @@ def run():
     
     # make sure something's selected
     if currentSelection is None or currentSelection.isEmpty():
-        print "Error: Must select data and/or instructions to XOR"
+        print("Error: Must select data and/or instructions to XOR")
         return
 
     # get XOR byte val
