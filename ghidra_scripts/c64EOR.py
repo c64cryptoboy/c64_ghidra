@@ -1,6 +1,6 @@
-# Script to apply a constant EOR (XOR) mask to a highlight range
+# Script to apply a constant EOR (XOR) mask to a highlighted disassembly range
 #
-# github c64cryptoboy/c64_ghidra, Dec '22
+# github c64cryptoboy/c64_ghidra, Jan '23
 #
 
 from ghidra.program.model.address import AddressSet
@@ -15,7 +15,7 @@ def run():
 
     # get XOR byte val
     while True:
-        input = askString('XOR byte over the range $%s-$%s'
+        input = askString('XOR bytes over the range $%s-$%s'
                 % (currentSelection.getMinAddress(), currentSelection.getMaxAddress()),
                 'Enter XOR hex byte' )
         tmp = input.strip()
@@ -31,8 +31,8 @@ def run():
             continue
         break
 
-    # Can't modify memory where there's defined instructions without first doing a "clear code bytes"
-    # in the GUI, or the API equivalent:
+    # Can't modify memory where there's defined instructions without first doing a
+    # "clear code bytes" in the GUI, or from here using the API:
     clearListing(currentSelection)
    
     addr_iter = currentSelection.getAddresses(True) # True == iterate accending

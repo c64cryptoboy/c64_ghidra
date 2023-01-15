@@ -2,15 +2,18 @@
 # containing references to these addresses.  Designed to work with bad references, so no need to
 # actually load in the referenced ROMs as if they were libraries.
 #
-# github c64cryptoboy/c64_ghidra, Dec '22
+# github c64cryptoboy/c64_ghidra, Jan '23
 #
 # Found these references useful when writing this script:
 # - http://unusedino.de/ec64/technical/project64/memory_maps.html
 # - https://archive.org/details/Compute_s_Mapping_the_Commodore_64
 # - https://ist.uwaterloo.ca/~schepers/MJK/ascii/1541map.txt
+# - https://sta.c64.org/cbm1541mem.html
+# - http://www.ffd2.com/fridge/docs/1541dis.html
 
 from ghidra.program.model.address import AddressSet
 from ghidra.program.model.symbol.SourceType import USER_DEFINED, IMPORTED
+from ghidra.program.model.symbol.RefType import CONDITIONAL_JUMP
 
 # operand type bits; python conversion from
 #    https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Framework/SoftwareModeling
@@ -266,20 +269,20 @@ romkernal_labels = {
     65463 : ("readss", "ffb7:Read I/O Status Word"),
     65466 : ("setlfs", "ffba:Set Logical File Parameters"),
     65469 : ("setnam", "ffbd:Set Filename"),
-    65472 : ("(iopen)", "ffc0:Open Vector [f34a]"),
-    65475 : ("(iclose)", "ffc3:Close Vector [f291]"),
-    65478 : ("(ichkin)", "ffc6:Set Input [f20e]"),
-    65481 : ("(ichkout)", "ffc9:Set Output [f250]"),
-    65484 : ("(iclrch)", "ffcc:Restore I/O Vector [f333]"),
-    65487 : ("(ichrin)", "ffcf:Input Vector chrin [f157]"),
-    65490 : ("(ichrout)", "ffd2:Output Vector chrout [f1ca]"),
+    65472 : ("iopen", "ffc0:Open Vector [f34a]"),
+    65475 : ("iclose", "ffc3:Close Vector [f291]"),
+    65478 : ("ichkin", "ffc6:Set Input [f20e]"),
+    65481 : ("ichkout", "ffc9:Set Output [f250]"),
+    65484 : ("iclrch", "ffcc:Restore I/O Vector [f333]"),
+    65487 : ("ichrin", "ffcf:Input Vector chrin [f157]"),
+    65490 : ("ichrout", "ffd2:Output Vector chrout [f1ca]"),
     65493 : ("load", "ffd5:Load RAM From Device"),
     65496 : ("save", "ffd8:Save RAM To Device"),
     65499 : ("settim", "ffdb:Set Real-Time Clock"),
     65502 : ("rdtim", "ffde:Read Real-Time Clock"),
-    65505 : ("(istop)", "ffe1:Test-Stop Vector [f6ed]"),
-    65508 : ("(igetin)", "ffe4:Get From Keyboad [f13e]"),
-    65511 : ("(iclall)", "ffe7:Close All Channels And Files [f32f]"),
+    65505 : ("istop", "ffe1:Test-Stop Vector [f6ed]"),
+    65508 : ("igetin", "ffe4:Get From Keyboad [f13e]"),
+    65511 : ("iclall", "ffe7:Close All Channels And Files [f32f]"),
     65514 : ("udtim", "ffea:Increment Real-Time Clock"),
     65517 : ("screen", "ffed:Return Screen Organization"),
     65520 : ("plot", "fff0:Read / Set Cursor X/Y Position"),
@@ -670,6 +673,9 @@ rambasic_labels = {
 }
 
 ioregs_labels = {
+    0 : ("D6510", "6510 On-Chip I/O DATA Direction Register"),
+    1 : ("R6510", "ROM/IO banking and cassette I/O"),
+    53248 : ("SPOX", "D000:Sprite 0 X Pos"),
     53249 : ("SPOY", "D001:Sprite 0 Y Pos"),
     53250 : ("SP1X", "D002:Sprite 1 X Pos"),
     53251 : ("SP1Y", "D003:Sprite 1 Y Pos"),
@@ -781,15 +787,23 @@ ioregs_labels = {
 }
 
 romio1541_labels = {
-    6144 : ("", "1800:VIA1: PB, port B"),
-    6145 : ("", "1801:VIA1: PA, port A"),
-    6146 : ("", "1802:VIA1: CB, data direction port B"),
-    6147 : ("", "1803:VIA1: CA, data direction port A"),
+    6144 : ("", "1800:VIA1: port B serial bus"),
+    6145 : ("", "1801:VIA1: port A. Read to ack interrupt from ATN IN going high"),
+    6146 : ("", "1802:VIA1: port B data direction reg"),
+    6147 : ("", "1803:VIA1: port A data direction reg"),
     6149 : ("", "1805:VIA1: Timer"),
     7168 : ("", "1C00:VIA2: PB, control port B"),
     7169 : ("", "1C01:VIA2: PA, port A (data to and from read/write head)"),
     7170 : ("", "1C02:VIA2: CB, data direction port B"),
     7171 : ("", "1C03:VIA2: A, data direction port A"),
+    7172 : ("", "1C04: Timer low byte"),
+    7173 : ("", "1C05: Timer high byte, write to start timer"),
+    7174 : ("", "1C06: Timer starting value low byte"),
+    7175 : ("", "1C07: Timer starting value high byte"),   
+    7179 : ("", "1C0b: Timer control register"),
+    7180 : ("", "1C0c: Auxiliary control register"),
+    7181 : ("", "1C0d: Interrupt status register"),
+    7182 : ("", "1C0e: Interrupt control register"),                         
     49408 : ("", "c100:Turn LED on for current drive"),
     49432 : ("", "c118:Turn LED on"),
     49443 : ("", "c123:Clear error flags"),
@@ -899,6 +913,7 @@ romio1541_labels = {
     54662 : ("", "d586:Read block"),
     54666 : ("", "d58a:Write block"),
     54681 : ("", "d599:Verify execution"),
+    54694 : ("", "d5a6:Verify execution (without wait)"),
     54726 : ("", "d5c6:Additional attempts for read errors"),
     54902 : ("", "d676:Move head by half a track"),
     54931 : ("", "d693:Move head one track in or out"),
@@ -1283,7 +1298,7 @@ def run():
     
     # make sure something's selected
     if currentSelection is None or currentSelection.isEmpty():
-        print("Error: Must select section to label")
+        print("Error: Must select a section of the disassembly to label")
         return
 
     # select device 
@@ -1340,7 +1355,6 @@ def run():
     for range in choices2:
         lookups.update(range_lookups[range]) # merge all the selected ranges
 
-    # https://ghidra.re/ghidra_docs/api/ghidra/program/model/listing/InstructionStub.html
     addr_iter = currentSelection.getAddresses(True) # True == iterate accending
     for addr in addr_iter: # iterate over user selection
         inst = getInstructionAt(addr)
@@ -1358,9 +1372,14 @@ def run():
                 operand_addr = inst_bytes[1] & 0xff
                 if len(inst_bytes) == 3:
                     operand_addr += (inst_bytes[2] & 0xff) * 256
-                operand_addr = toAddr(operand_addr)
-                if operand_addr.getOffset() in lookups:
-                    operand_addr_lookup = lookups[operand_addr.getOffset()]
+                if inst.getFlowType() == CONDITIONAL_JUMP:  # if a 6502 conditional branch
+                    # TODO: could easily change this 8-bit signed offset into an address for lookup,
+                    #       but for now, we'll just not process the Bxx instructions
+                    pass
+                else:
+                    operand_addr = toAddr(operand_addr)
+                    if operand_addr.getOffset() in lookups:
+                        operand_addr_lookup = lookups[operand_addr.getOffset()]
             
         if create_label:
             if addr_lookup is not None:
@@ -1398,8 +1417,4 @@ def setEOLCommentOnAddr(addr, comment, replace = False):
 
     setEOLComment(addr, comment)
 
-
 run()
-
-
-
