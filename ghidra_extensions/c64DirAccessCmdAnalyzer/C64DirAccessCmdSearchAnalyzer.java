@@ -74,7 +74,7 @@ public class C64DirAccessCmdSearchAnalyzer extends AbstractAnalyzer {
 			throws CancelledException {
 
 	    // Commodore PETSCII close enough to ASCII that this works:
-	    String[] searchStrs = {"29", "U1", "U2", "M-R", "M-W", "M-E", "B-P", "B-R", "B-W", "B-E", "B-A", "B-F"};
+	    String[] searchStrs = {"U1", "U2", "M-R", "M-W", "M-E", "B-P", "B-R", "B-W", "B-E", "B-A", "B-F"};
 
 	    Memory mem = program.getMemory();
 	    SetCommentCmd cmd;

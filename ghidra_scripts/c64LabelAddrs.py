@@ -1,6 +1,6 @@
 # Script to give labels to known C64 memory locations and memory mapped I/O, and to comment code
-# containing references to these addresses.  Designed to work with bad references, so no need to
-# actually load in the referenced ROMs as if they were libraries.
+# containing references to these addresses.  Will work with bad references, so no need to
+# actually load in the referenced ROMs as libraries.
 #
 # github c64cryptoboy/c64_ghidra, Jan '23
 #
@@ -1296,10 +1296,9 @@ ram1541_labels = {
 def run():
     memory = currentProgram.getMemory()
     
-    # make sure something's selected
-    if currentSelection is None or currentSelection.isEmpty():
-        print("Error: Must select a section of the disassembly to label")
-        return
+    selection = currentSelection
+    if selection is None or selection.isEmpty():
+        selection = memory.getExecuteSet()
 
     # select device 
     choice1_C64 = "C64 ROM/RAM/IOregs"
@@ -1355,7 +1354,7 @@ def run():
     for range in choices2:
         lookups.update(range_lookups[range]) # merge all the selected ranges
 
-    addr_iter = currentSelection.getAddresses(True) # True == iterate accending
+    addr_iter = selection.getAddresses(True) # True == iterate accending
     for addr in addr_iter: # iterate over user selection
         inst = getInstructionAt(addr)
         
