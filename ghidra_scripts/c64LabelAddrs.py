@@ -1354,7 +1354,7 @@ def run():
     for range in choices2:
         lookups.update(range_lookups[range]) # merge all the selected ranges
 
-    addr_iter = selection.getAddresses(True) # True == iterate accending
+    addr_iter = selection.getAddresses(True) # True == iterate ascending
     for addr in addr_iter: # iterate over user selection
         inst = getInstructionAt(addr)
         
@@ -1367,10 +1367,13 @@ def run():
         if for_operand_addr:
             if inst is not None and inst.getNumOperands() > 0 and (inst.getOperandType(0) & ADDRESS) > 0:
                 # get the one or two-byte address in the operand (little endian)
+                # Note: I made computing the dest address too hard on myself, I should have just
+                #       done a getReferencesFrom(programCounter)[0].getToAddress()
                 inst_bytes = inst.getBytes()
                 operand_addr = inst_bytes[1] & 0xff
                 if len(inst_bytes) == 3:
                     operand_addr += (inst_bytes[2] & 0xff) * 256
+
                 if inst.getFlowType() == CONDITIONAL_JUMP:  # if a 6502 conditional branch
                     # TODO: could easily change this 8-bit signed offset into an address for lookup,
                     #       but for now, we'll just not process the Bxx instructions

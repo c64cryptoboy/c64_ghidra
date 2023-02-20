@@ -7,7 +7,7 @@ from ghidra.program.model.address import AddressSet
 
 def run():
     memory = currentProgram.getMemory()
-    
+
     # make sure something's selected
     if currentSelection is None or currentSelection.isEmpty():
         print("Error: Must select data and/or instructions to XOR")
@@ -35,7 +35,7 @@ def run():
     # "clear code bytes" in the GUI, or from here using the API:
     clearListing(currentSelection)
    
-    addr_iter = currentSelection.getAddresses(True) # True == iterate accending
+    addr_iter = currentSelection.getAddresses(True) # True == iterate ascending
     for addr in addr_iter:
         setByte(addr, getByte(addr) ^ xor_byte)
 

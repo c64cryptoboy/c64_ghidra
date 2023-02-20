@@ -62,8 +62,7 @@ public class C64BinLoader extends AbstractProgramWrapperLoader {
         List<LoadSpec> loadSpecs = new ArrayList<>();
 
         // Arbitrary C64 ML files have no standard headers by which we can figure out if they
-        // are valid for this custom loader.  But programs extracted from DirMaster should
-        // end with ".prg", so we can at least check that.
+        // are valid for this custom loader.  Check for common ".prg" and ".bin" extensions.
         String name = provider.getFile().getName().toLowerCase();
         if (!(name.endsWith(".prg") || name.endsWith(".bin"))) {
             return loadSpecs;  // wrong extension, don't offer this loader
@@ -248,7 +247,6 @@ public class C64BinLoader extends AbstractProgramWrapperLoader {
             loadFirstTwoBytes = (Boolean)getValForNamedOption(options, OPTION_LOAD_FIRST_TWO_BYTES);
             loadAddrStr = ((String)getValForNamedOption(options, OPTION_LOAD_ADDRESS)).trim();                    
             entryStr = ((String)getValForNamedOption(options, OPTION_ENTRY_ADDRESS)).trim();
-            //overlay = (Boolean)getValForNamedOption(options, OPTION_OVERLAY);
             createStack = (Boolean)getValForNamedOption(options, OPTION_CREATE_STACK);
         } catch (IOException e) {
             return "Error: cannot retreive option";
