@@ -62,7 +62,7 @@ class PcodeEmu6502(object):
     # returns updated PC
     def move_pc_to_next_inst(self, addr):
         inst = getInstructionAt(addr)
-        print("Skipping $%s: %s" % (str(addr), str(inst)))
+        print("Skipping $%s: %s\n" % (str(addr), str(inst)))
         next_instruction = inst.getNext()  # like pc.add(inst.length)
         next_addr = next_instruction.getAddress()
         self.set_pc(next_addr)
@@ -70,7 +70,7 @@ class PcodeEmu6502(object):
 
     def block_containing_addr(self, addr):
         for block in self.mem.getBlocks():
-            if block.getStart() <= addr <= block.getEnd():
+            if block.getStart().getOffset() <= addr.getOffset() <= block.getEnd().getOffset():
                 return block
         return None
 
@@ -137,24 +137,19 @@ class PcodeEmu6502(object):
             self.step_num += 1  
 
             # skip JSRs and JMPs that flow outside of defined memory
-            if not tolerate_mods_to_dataflow:
-                # Note: tolerate_mods_to_dataflow is here because asking Ghidra for reference info
-                #       is, for some reason, unsafe if the code had modified memory that program Counter
-                #       dataflow will then pass through.  At varying times, it will "SystemExit"
-                #       in the console and exit from the script with no explaination in the log.            
-                references = getReferencesFrom(pc)
-                if len(references) > 0:
-                    if len(references) > 1:
-                        exit("Assumption bug: I assume this shouldn't happen in 6502 land?")
-                    ref = references[0]
-                    # I assume I don't need to check isComputed() for an indirect JMP?
-                    if ref.referenceType.isCall() or ref.referenceType.isJump():
-                        print("DEBUG: %s" % ref.referenceType)
-                        dest = ref.getToAddress()
-
-                        # I tried "if not dest.isLoadedMemoryAddress()", but that didn't work as
-                        # expected, so doing this check manually:                    
+            if inst.flowType.isCall() or inst.flowType.isJump():
+                if not tolerate_mods_to_dataflow:
+                    # Note: tolerate_mods_to_dataflow is here because asking Ghidra for reference info
+                    #       is, for some reason, unsafe if the code had modified memory that program Counter
+                    #       dataflow will then pass through.  At varying times, it will "SystemExit"
+                    #       in the console and exit from the script with no explanation in the log.            
+                    references = getReferencesFrom(pc)
+                    if len(references) > 0:
+                        dest = references[0].getToAddress()
+                        # Tried "if not dest.isLoadedMemoryAddress()", but that didn't work as
+                        # expected, so doing this instead
                         if self.block_containing_addr(dest) is None:
+                            print("$%04x not in memory map" % dest.getOffset())
                             pc = self.move_pc_to_next_inst(pc)
                             continue
 
@@ -174,10 +169,12 @@ class PcodeEmu6502(object):
                 if len(filtered) > 0:
                     addr_to_write = filtered[0].getMinAddress()
 
-                    # sanity check
-                    if (len(filtered) > 1 or addr_to_write != filtered[0].getMaxAddress()):
-                        print("error: expected a 6502 instruction to update at most one memory location")
-
+                    # Our only reason to write emulator memory back to the program memory is to support
+                    # self-modifying code.  So this is written as if each instruction can only change up to
+                    # one byte of memory.  This is not true of course; JSR puts 2 bytes on the stack, and BRK
+                    # puts 3, but we likely don't need to write the emulator's stack back to the program's stack
+                    # block (if it even has one).  I'll have to change my mind if/when the stack itself contains
+                    # self-modified code.
                     if addr_to_write is not None:
                         new_value = self.emu.readMemoryByte(addr_to_write)
                         try:
@@ -211,7 +208,7 @@ def run():
     # TODO: Should get user input for params, just hard coded for now
     start_addr = 0xc000
     end_addr = None
-    max_steps = None
+    max_steps = 14
     update_memory = True
     tolerate_mods_to_dataflow = False
 
